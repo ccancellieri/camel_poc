@@ -14,12 +14,13 @@
 <beans xmlns="http://www.springframework.org/schema/beans"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/spring"
 	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:prop="http://camel.apache.org/schema/placeholder"
 	xsi:schemaLocation="
         http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
         http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd
         http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
 
-	<!-- <bean id="CamelPropertiesSub" -->
+	<!-- <bean id="CamelPropertiesSpringSub" -->
 	<!-- class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer"> -->
 	<!-- <property name="locations"> -->
 	<!-- <list> -->
@@ -32,45 +33,75 @@
 
 	<!-- This is the Camel route which asks for input and aggregates incoming 
 		numbers -->
-	<camelContext id="camel-1" xmlns="http://camel.apache.org/schema/spring">
+	<camelContext id="camel-1" xmlns="http://camel.apache.org/schema/spring" >
 		<propertyPlaceholder id="CamelPropertiesSub"
 			location="classpath:camel.properties" />
 
+		<onException>
+			<!-- the exception is full qualified names as plain strings -->
+			<!-- there can be more just add a 2nd, 3rd exception element (unbounded) -->
+			<exception>java.lang.Exception</exception>
+			<!-- we can set the redelivery policy here as well -->
+			<redeliveryPolicy maximumRedeliveries="1" />
+			<!-- mark this as handled -->
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<!-- and log -->
+			<to uri="log://it.ccancellieri?level=error&amp;showStackTrace=true" />
+		</onException>
+
 		<route>
+
 			<!-- poll every 10 seconds -->
 			<from
-				uri="file://{{file.path.in}}?move={{file.path.out}}&amp;moveFailed={{file.path.err}}{{file.options}}" />
+				uri="file://{{file.path.in}}?filter=#fileFilterChecker&amp;move={{file.path.out}}&amp;moveFailed={{file.path.err}}{{file.options}}" />
 
-			<split parallelProcessing="false" stopOnException="true"
+			<!-- ENRICH THE EXCHANGE WITH INFORMATIONS FROM THE PATH -->
+
+			<bean ref="fileExchangeChecker" method="enrichUsingPath" />
+
+			<to uri="seda:splitting" />
+		</route>
+
+		<!-- Process csv stream: Body[file://path/to/file.csv] -->
+		<route>
+			<!-- ACTUALLY READ THE CSV stream -->
+			<from uri="seda:splitting" />
+
+<!-- 			<setHeader headerName="csv.row.group"> -->
+<!-- 				<constant>2</constant> -->
+<!-- 			</setHeader> -->
+
+			<split parallelProcessing="false" stopOnException="false"
 				streaming="true">
-				<!-- <tokenize token="\n" /> -->
-				<simple>${body}</simple>
-				<!-- <to uri="bean:CSVUnmarshaller?method=doHandleCsvRow" /> -->
 
+<!-- 				<tokenize prop:token="csv.row.delimiter" prop:group="csv.row.group" /> -->
+				<tokenize token="\n" group="10" />
 				<unmarshal>
-					<csv autogenColumns="true" delimiter="," skipFirstLine="false"
-						useMaps="true" configRef="csvConfig" strategyRef="excelStrategy" /> <!-- useMaps="true" -->
+					<csv autogenColumns="true" delimiter=";" skipFirstLine="false"
+						useMaps="true" configRef="csvConfig" lazyLoad="false" />
 				</unmarshal>
 
-				<process ref="RowChecker" />
+				<to uri="seda:processing" />
 			</split>
+		</route>
 
-			<!-- <unmarshal> -->
-			<!-- <csv delimiter="," skipFirstLine="true" /> -->
-			<!-- </unmarshal> -->
-
-			<!-- <to uri="bean:CSVUnmarshaller?method=doMergeCsvData" /> -->
-
-			<to uri="bean:CSVUnmarshaller?method=doHandleCsvData" />
-
+		<!-- PROCESS PARSED DATA ROWS Body[List<Map<Object,Object>>] -->
+		<route>
+			<from uri="seda:processing" />
+			<process ref="RowChecker" />
 			<to uri="seda:stdout" />
 		</route>
 
 		<!-- print on the console -->
 		<route>
 			<from uri="seda:stdout" />
+			<to uri="bean:CSVmarshaller?method=doHandleCsvAsListOfMaps" />
 			<to uri="stream:out" />
+			<to uri="log://it.ccancellieri?level=info&amp;showStackTrace=true" />
 		</route>
+
 	</camelContext>
 
 	<bean id="csvConfig" class="org.apache.commons.csv.writer.CSVConfig">
@@ -92,10 +123,13 @@
 			value="org.apache.commons.csv.CSVStrategy.EXCEL_STRATEGY" />
 	</bean>
 
+	<bean id="fileFilterChecker"
+		class="it.ccancellieri.camel.poc.onboarding.file.FileFilterChecker" />
+	<bean id="fileExchangeChecker"
+		class="it.ccancellieri.camel.poc.onboarding.file.exchange.FileExchangeChecker" />
+	<bean id="CSVmarshaller" class="it.ccancellieri.camel.poc.onboarding.CSVmarshaller" />
 
-	<bean id="CSVUnmarshaller" class="it.ccancellieri.camel.poc.CSVUnmarshaller" />
-
-	<bean id="RowChecker" class="it.ccancellieri.camel.poc.RowChecker" />
+	<bean id="RowChecker" class="it.ccancellieri.camel.poc.onboarding.row.RowChecker" />
 
 </beans>
 <!-- END SNIPPET: e1 -->
