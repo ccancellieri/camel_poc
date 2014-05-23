@@ -33,7 +33,7 @@
 
 	<!-- This is the Camel route which asks for input and aggregates incoming 
 		numbers -->
-	<camelContext id="camel-1" xmlns="http://camel.apache.org/schema/spring" >
+	<camelContext id="camel-1" xmlns="http://camel.apache.org/schema/spring">
 		<propertyPlaceholder id="CamelPropertiesSub"
 			location="classpath:camel.properties" />
 
@@ -48,7 +48,7 @@
 				<constant>true</constant>
 			</handled>
 			<!-- and log -->
-			<to uri="log://it.ccancellieri?level=error&amp;showStackTrace=true" />
+			<to uri="log://it.ccancellieri?level=error&amp;showException=true&amp;showStackTrace=false" />
 		</onException>
 
 		<route>
@@ -69,21 +69,34 @@
 			<!-- ACTUALLY READ THE CSV stream -->
 			<from uri="seda:splitting" />
 
-<!-- 			<setHeader headerName="csv.row.group"> -->
-<!-- 				<constant>2</constant> -->
-<!-- 			</setHeader> -->
+			<!-- <setHeader headerName="csv.row.group"> -->
+			<!-- <constant>2</constant> -->
+			<!-- </setHeader> -->
 
 			<split parallelProcessing="false" stopOnException="false"
 				streaming="true">
 
-<!-- 				<tokenize prop:token="csv.row.delimiter" prop:group="csv.row.group" /> -->
-				<tokenize token="\n" group="10" />
-				<unmarshal>
-					<csv autogenColumns="true" delimiter=";" skipFirstLine="false"
-						useMaps="true" configRef="csvConfig" lazyLoad="false" />
-				</unmarshal>
+				<!-- <tokenize prop:token="csv.row.delimiter" prop:group="csv.row.group" 
+					/> -->
+				<tokenize token="\n" group="1" />
 
-				<to uri="seda:processing" />
+				<!-- <filter> -->
+				<!-- <simple>${in.body} contains '10;' or ${in.body} contains '30;' -->
+				<!-- </simple> -->
+				<!-- <to uri="stream:err" /> -->
+				<!-- </filter> -->
+				<filter>
+					<simple>${in.body} contains '20;'
+					</simple>
+
+					<unmarshal>
+						<csv autogenColumns="true" delimiter=";" skipFirstLine="false"
+							useMaps="true" configRef="csvConfig" lazyLoad="false" />
+					</unmarshal>
+					<to uri="seda:processing" />
+				</filter>
+
+<!-- 				<to uri="seda:stdout" /> -->
 			</split>
 		</route>
 
@@ -91,15 +104,20 @@
 		<route>
 			<from uri="seda:processing" />
 			<process ref="RowChecker" />
-			<to uri="seda:stdout" />
+			<to uri="seda:marshaller" />
 		</route>
 
 		<!-- print on the console -->
 		<route>
-			<from uri="seda:stdout" />
+			<from uri="seda:marshaller" />
 			<to uri="bean:CSVmarshaller?method=doHandleCsvAsListOfMaps" />
+			<to uri="seda:stdout" />
+		</route>
+
+		<route>
+			<from uri="seda:stdout" />
 			<to uri="stream:out" />
-			<to uri="log://it.ccancellieri?level=info&amp;showStackTrace=true" />
+<!-- 			<to uri="log://it.ccancellieri?level=info&amp;showStackTrace=true" /> -->
 		</route>
 
 	</camelContext>
@@ -108,10 +126,97 @@
 		<property name="fields">
 			<list>
 				<bean class="org.apache.commons.csv.writer.CSVField">
-					<property name="name" value="orderId" />
+					<property name="name" value="RECORD_TYPE" />
 				</bean>
 				<bean class="org.apache.commons.csv.writer.CSVField">
-					<property name="name" value="amount" />
+					<property name="name" value="SITE_ID" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="COMMENTS" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="ACTION_CD" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_LOC_ID" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="LAST_SEEN_DT" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_NAME" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_MERCH_NAME" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_LEGAL_NAME" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_ADDR" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_MERCH_ADDR" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_CITY" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_MERCH_CITY" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_DIST" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_STATE" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_POSTAL_CD" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_MERCH_POSTAL_CD" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_PROV_CD" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="ACQ_MERCH_ID" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_ACQ_MERCH_ID" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MC_MCC" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="IBAN" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="CHAIN_ID" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="MERCH_MGR" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="IND_DESC" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="CASH_BACK" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="VAT_REG" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="EFF_DT" />
+				</bean>
+<!-- 				<bean class="org.apache.commons.csv.writer.CSVField"> -->
+<!-- 					<property name="name" value="CS_BEG_DT" /> -->
+<!-- 				</bean> -->
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="CS_END_DT" />
+				</bean>
+				<bean class="org.apache.commons.csv.writer.CSVField">
+					<property name="name" value="FILE_DT" />
 				</bean>
 			</list>
 		</property>
