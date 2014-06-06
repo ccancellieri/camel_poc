@@ -20,14 +20,14 @@
         http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd
         http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
 
-	<!-- <bean id="CamelPropertiesSpringSub" -->
-	<!-- class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer"> -->
-	<!-- <property name="locations"> -->
-	<!-- <list> -->
-	<!-- <value>classpath:camel.properties</value> -->
-	<!-- </list> -->
-	<!-- </property> -->
-	<!-- </bean> -->
+	<bean id="CamelPropertiesSpringSub"
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<property name="locations">
+			<list>
+				<value>classpath:camel.properties</value>
+			</list>
+		</property>
+	</bean>
 
 	<context:component-scan base-package="it.ccancellieri.camel.poc" />
 
@@ -48,7 +48,8 @@
 				<constant>true</constant>
 			</handled>
 			<!-- and log -->
-			<to uri="log://it.ccancellieri?level=error&amp;showException=true&amp;showStackTrace=false" />
+			<to
+				uri="log://it.ccancellieri?level=error&amp;showException=true&amp;showStackTrace=false" />
 		</onException>
 
 		<route>
@@ -78,6 +79,8 @@
 
 				<!-- <tokenize prop:token="csv.row.delimiter" prop:group="csv.row.group" 
 					/> -->
+				<!-- <tokenize token="\n" group="1" ttoken="csv.row.delimiter" tgroup="csv.row.group" 
+					/> -->
 				<tokenize token="\n" group="1" />
 
 				<!-- <filter> -->
@@ -86,8 +89,7 @@
 				<!-- <to uri="stream:err" /> -->
 				<!-- </filter> -->
 				<filter>
-					<simple>${in.body} contains '20;'
-					</simple>
+					<simple>${in.body} contains '20;'</simple>
 
 					<unmarshal>
 						<csv autogenColumns="true" delimiter=";" skipFirstLine="false"
@@ -95,8 +97,18 @@
 					</unmarshal>
 					<to uri="seda:processing" />
 				</filter>
+				<filter>
+					<simple>${header.complId} contains '30;'</simple>
 
-<!-- 				<to uri="seda:stdout" /> -->
+<!-- 					<transform> -->
+<!-- 						<simple>END_${exchangeId}</simple> -->
+<!-- 					</transform> -->
+					<setHeader headerName="complId">
+						<simple>END_${exchangeId}</simple>
+					</setHeader>
+					<to uri="seda:aggregation" />
+				</filter>
+				<!-- <to uri="seda:stdout" /> -->
 			</split>
 		</route>
 
@@ -104,7 +116,26 @@
 		<route>
 			<from uri="seda:processing" />
 			<process ref="RowChecker" />
-			<to uri="seda:marshaller" />
+			<to uri="seda:aggregation" />
+		</route>
+
+		<route>
+			<from uri="seda:aggregation" />
+			<!-- aggregate using our strategy and leveldb repo -->
+			<aggregate strategyRef="rowAggregationStrategy"
+				aggregationRepositoryRef="aggregationRepository"
+				completionFromBatchConsumer="false">
+				<!-- correlate by header with the key id -->
+				<correlationExpression>
+					<header>aggrId</header>
+				</correlationExpression>
+
+				<completionPredicate>
+					<simple>${header.complId} == 'END_${exchangeId}'</simple>
+				</completionPredicate>
+				<!-- send aggregated messages to the mock endpoint -->
+				<to uri="seda:marshaller" />
+			</aggregate>
 		</route>
 
 		<!-- print on the console -->
@@ -117,10 +148,23 @@
 		<route>
 			<from uri="seda:stdout" />
 			<to uri="stream:out" />
-<!-- 			<to uri="log://it.ccancellieri?level=info&amp;showStackTrace=true" /> -->
+			<!-- <to uri="log://it.ccancellieri?level=info&amp;showStackTrace=true" 
+				/> -->
 		</route>
 
 	</camelContext>
+
+	<bean id="rowAggregationStrategy"
+		class="it.ccancellieri.camel.poc.onboarding.row.RowAggregationStrategy" />
+
+	<!-- a persistent aggregation repository using camel-leveldb -->
+	<bean id="aggregationRepository"
+		class="org.apache.camel.component.leveldb.LevelDBAggregationRepository">
+		<!-- store the repo in the leveldb.dat file -->
+		<property name="persistentFileName" value="${aggregation.db.fileName}" />
+		<!-- and use repo2 as the repository name -->
+		<property name="repositoryName" value="repo2" />
+	</bean>
 
 	<bean id="csvConfig" class="org.apache.commons.csv.writer.CSVConfig">
 		<property name="fields">
@@ -209,9 +253,9 @@
 				<bean class="org.apache.commons.csv.writer.CSVField">
 					<property name="name" value="EFF_DT" />
 				</bean>
-<!-- 				<bean class="org.apache.commons.csv.writer.CSVField"> -->
-<!-- 					<property name="name" value="CS_BEG_DT" /> -->
-<!-- 				</bean> -->
+				<!-- <bean class="org.apache.commons.csv.writer.CSVField"> -->
+				<!-- <property name="name" value="CS_BEG_DT" /> -->
+				<!-- </bean> -->
 				<bean class="org.apache.commons.csv.writer.CSVField">
 					<property name="name" value="CS_END_DT" />
 				</bean>

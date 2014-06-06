@@ -80,6 +80,12 @@
 			<groupId>org.apache.camel</groupId>
 			<artifactId>camel-stream</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.apache.camel</groupId>
+			<artifactId>camel-leveldb</artifactId>
+			<version>${camel.version}</version>
+		</dependency>
+
 		<!-- for logging using log4j.properties in src/main/resources -->
 		<dependency>
 			<groupId>org.slf4j</groupId>
@@ -375,6 +381,12 @@
 			<dependency>
 				<groupId>org.apache.camel</groupId>
 				<artifactId>camel-core</artifactId>
+				<version>${camel.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.apache.camel</groupId>
+				<artifactId>camel-leveldb</artifactId>
 				<version>${camel.version}</version>
 			</dependency>
 
