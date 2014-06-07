@@ -40,7 +40,7 @@
 		<onException>
 			<!-- the exception is full qualified names as plain strings -->
 			<!-- there can be more just add a 2nd, 3rd exception element (unbounded) -->
-			<exception>java.lang.Exception</exception>
+			<exception>java.lang.RuntimeException</exception>
 			<!-- we can set the redelivery policy here as well -->
 			<redeliveryPolicy maximumRedeliveries="1" />
 			<!-- mark this as handled -->
@@ -49,7 +49,7 @@
 			</handled>
 			<!-- and log -->
 			<to
-				uri="log://it.ccancellieri?level=error&amp;showException=true&amp;showStackTrace=false" />
+				uri="log://it.ccancellieri?level=error&amp;showException=false&amp;showStackTrace=true" />
 		</onException>
 
 		<route>
@@ -83,6 +83,8 @@
 					/> -->
 				<tokenize token="\n" group="1" />
 
+				<!-- TODO: probably a route may be better in performance -->
+
 				<!-- <filter> -->
 				<!-- <simple>${in.body} contains '10;' or ${in.body} contains '30;' -->
 				<!-- </simple> -->
@@ -95,19 +97,43 @@
 						<csv autogenColumns="true" delimiter=";" skipFirstLine="false"
 							useMaps="true" configRef="csvConfig" lazyLoad="false" />
 					</unmarshal>
+					
+					<setHeader headerName="CamelBatchSize">
+						<simple>10000</simple>
+					</setHeader>
 					<to uri="seda:processing" />
 				</filter>
-				<filter>
-					<simple>${header.complId} contains '30;'</simple>
 
-<!-- 					<transform> -->
-<!-- 						<simple>END_${exchangeId}</simple> -->
-<!-- 					</transform> -->
-					<setHeader headerName="complId">
+				<!-- <transform> -->
+				<!-- <simple>END_${exchangeId}</simple> -->
+				<!-- </transform> -->
+				<filter>
+					<simple>${in.body} contains '30;'</simple>
+					<setHeader headerName="CamelBatchSize">
+						<simple>0</simple>
+					</setHeader>
+					<setHeader headerName="aggrId">
 						<simple>END_${exchangeId}</simple>
+					</setHeader>
+					<setHeader headerName="CamelSplitComplete">
+						<simple>true</simple>
+					</setHeader>
+					<setHeader headerName="CamelAggregationCompleteAllGroups">
+						<simple>true</simple>
 					</setHeader>
 					<to uri="seda:aggregation" />
 				</filter>
+				
+<!-- 				<filter> -->
+<!-- 					<simple>${in.body} contains '30;'</simple> -->
+<!-- 					<setHeader headerName="aggrId"> -->
+<!-- 						<simple>END_${exchangeId}</simple> -->
+<!-- 					</setHeader> -->
+<!-- 					<setHeader headerName="CamelSplitComplete"> -->
+<!-- 						<simple>true</simple> -->
+<!-- 					</setHeader> -->
+<!-- 					<to uri="seda:aggregation" /> -->
+<!-- 				</filter> -->
 				<!-- <to uri="seda:stdout" /> -->
 			</split>
 		</route>
@@ -124,14 +150,16 @@
 			<!-- aggregate using our strategy and leveldb repo -->
 			<aggregate strategyRef="rowAggregationStrategy"
 				aggregationRepositoryRef="aggregationRepository"
-				completionFromBatchConsumer="false">
+				completionFromBatchConsumer="false" eagerCheckCompletion="false">
+<!-- 				ignoreInvalidCorrelationKeys="true" -->
 				<!-- correlate by header with the key id -->
 				<correlationExpression>
 					<header>aggrId</header>
 				</correlationExpression>
 
 				<completionPredicate>
-					<simple>${header.complId} == 'END_${exchangeId}'</simple>
+					<!-- <simple>${in.header.complId} == 'END_${exchangeId}'</simple> -->
+					<simple>${in.header.CamelSplitComplete} == true</simple>
 				</completionPredicate>
 				<!-- send aggregated messages to the mock endpoint -->
 				<to uri="seda:marshaller" />
